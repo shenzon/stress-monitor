@@ -1,0 +1,8 @@
+streamlit>=1.35
+plotly>=5.20
+pandas>=2.1
+numpy>=1.26
+duckdb>=1.0
+fredapi>=0.5.2
+requests>=2.31
+eurostat>=1.1
