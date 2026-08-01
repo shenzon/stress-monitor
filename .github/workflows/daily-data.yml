@@ -1,0 +1,57 @@
+name: Daily data refresh
+
+on:
+  schedule:
+    - cron: '30 6 * * *'   # 06:30 UTC daily
+  workflow_dispatch:        # manual "Run workflow" button
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-data
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code (main)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Restore current DB from live branch
+        run: |
+          git fetch origin live --depth 1 || echo "no live branch yet"
+          mkdir -p data
+          git checkout origin/live -- data/stress.duckdb 2>/dev/null \
+            && echo "restored DB from live" \
+            || echo "no existing DB; run.py will bootstrap"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Incremental pull + rebuild composites
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+        run: |
+          python run.py daily
+          python run.py status || true
+
+      - name: Publish code + data to live branch
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan _live
+          git add -A
+          git add -f data/stress.duckdb
+          git commit -m "live snapshot $(date -u +'%Y-%m-%d %H:%M UTC')"
+          git push --force origin _live:live
